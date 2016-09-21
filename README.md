@@ -1,217 +1,377 @@
-FileSystem River for Elasticsearch
-==================================
+# FileSystem Crawler for Elasticsearch
 
-Welcome to the FS River Plugin for [Elasticsearch](http://www.elasticsearch.org/)
+Welcome to the FS Crawler for [Elasticsearch](https://elastic.co/)
 
-This river plugin helps to index documents from your local file system and using SSH.
-
-**WARNING**: If you use this river in a multinode mode on different servers without SSH, you need to ensure that the river
-can access files on the same mounting point. If not, when a node stop, the other node will _think_ that your
-local dir is empty and will **erase** all your docs.
-
-In order to install the plugin, run: 
-
-```sh
-bin/plugin -install fr.pilato.elasticsearch.river/fsriver/1.3.1
-```
+This crawler helps to index documents from your local file system and over SSH.
+It crawls your file system and index new files, update existing ones and removes old ones.
 
 You need to install a version matching your Elasticsearch version:
 
-|       Elasticsearch    |  FS River Plugin  |                                                            Docs                                                                    |
-|------------------------|-------------------|------------------------------------------------------------------------------------------------------------------------------------|
-|    master              | Build from source | See below                                                                                                                          |
-|    es-1.x              | Build from source | [1.5.0-SNAPSHOT](https://github.com/dadoonet/fsriver/tree/es-1.x/#version-150-snapshot-for-elasticsearch-1x)                       |
-|    es-1.4              | Build from source | [1.4.0-SNAPSHOT](https://github.com/dadoonet/fsriver/tree/es-1.4/#version-140-snapshot-for-elasticsearch-1x)                       |
-|    es-1.3              |     1.3.1         | [1.3.1](https://github.com/dadoonet/fsriver/tree/v1.3.1/#version-131-for-elasticsearch-13)                  |
-|    es-1.2              |     1.2.0         | [1.2.0](https://github.com/dadoonet/fsriver/tree/v1.2.0/#version-120-for-elasticsearch-12)                  |
-|    es-1.0              |     1.0.0         | [1.0.0](https://github.com/dadoonet/fsriver/tree/v1.0.0/#filesystem-river-for-elasticsearch)                                       |
-|    es-0.90             |     0.5.0         | [0.5.0](https://github.com/dadoonet/fsriver/tree/v0.5.0/#filesystem-river-for-elasticsearch)                                       |
+| Elasticsearch |  FS Crawler | Released |                                       Docs                                   |
+|---------------|-------------|----------|------------------------------------------------------------------------------|
+|    es-2.0     | 2.0.0       |2015-10-30|[2.0.0](https://github.com/dadoonet/fscrawler/blob/fscrawler-2.0.0/README.md) |
+| 1.x, 2.x, 5.x | **2.1**     |2016-07-26|[2.1](https://github.com/dadoonet/fscrawler/blob/fscrawler-2.1/README.md)     |
+| 1.x, 2.x, 5.x | 2.2-SNAPSHOT|          |See below                                                                     |
 
-To build a `SNAPSHOT` version, you need to build it with Maven:
+From FS Crawler 2.1, all elasticsearch versions since 1.0 are supported.
 
-```bash
-mvn clean install
-plugin --install fsriver \ 
-       --url file:target/releases/fsriver-X.X.X-SNAPSHOT.zip
+## Build Status
+
+Thanks to Travis for the [build status](https://travis-ci.org/dadoonet/fscrawler): 
+[![Build Status](https://travis-ci.org/dadoonet/fscrawler.svg)](https://travis-ci.org/dadoonet/fscrawler)
+
+
+# Download fscrawler
+
+FS Crawler binary is available on [Maven Central](https://repo1.maven.org/maven2/fr/pilato/elasticsearch/crawler/fscrawler/).
+Just download the latest release (or any other specific version you want to try).
+
+The filename ends with `.zip`.
+
+For example, if you wish to download [fscrawler-2.1](https://repo1.maven.org/maven2/fr/pilato/elasticsearch/crawler/fscrawler/2.1/fscrawler-2.1.zip):
+
+```sh
+wget https://repo1.maven.org/maven2/fr/pilato/elasticsearch/crawler/fscrawler/2.1/fscrawler-2.1.zip
+unzip fscrawler-2.1.zip
 ```
 
-
-Build Status
-------------
-
-Thanks to cloudbees for the [build status](https://buildhive.cloudbees.com/job/dadoonet/job/fsriver/) : 
-[![Build Status](https://buildhive.cloudbees.com/job/dadoonet/job/fsriver/badge/icon)](https://buildhive.cloudbees.com/job/dadoonet/job/fsriver/)
-
-Getting Started
-===============
-
-Creating a FS river
--------------------
-
-You can create the most simple river as follow:
+The distribution contains:
 
 ```
-PUT _river/mydocs/_meta
+$ tree
+.
+├── LICENSE
+├── NOTICE
+├── README.md
+├── bin
+│   ├── fscrawler
+│   └── fscrawler.bat
+└── lib
+    ├── ... All needed jars
+```
+
+Note that you can also download a SNAPSHOT version
+[from sonatype](https://oss.sonatype.org/content/repositories/snapshots/fr/pilato/elasticsearch/crawler/fscrawler/2.2-SNAPSHOT/)
+without needing to build it by yourself.
+
+# Upgrading fscrawler
+
+It can happen that you need to [upgrade a mapping](#upgrading-an-existing-mapping) before starting fscrawler after a
+version upgrade.
+Read carefully the following update instructions.
+
+To update fscrawler, just download the new version, unzip it in another directory and launch it as usual.
+It will still pick up settings from the configuration directory. Of course, you need to stop first the existing
+running instances.
+
+## From 2.1
+
+* No specific instruction
+
+
+# Getting Started
+
+**You need to have at least Java 1.8.**
+
+```sh
+bin/fscrawler job_name
+```
+
+FS crawler will read a local file (default to `~/.fscrawler/{job_name}/_settings.json`).
+If the file does not exist, FS crawler will propose to create your first job.
+
+Once the crawler is running, it will write status information and statistics in:
+
+* `~/.fscrawler/{job_name}/_settings.json`
+* `~/.fscrawler/{job_name}/_status.json`
+
+It means that if you stop the job at some point, FS crawler will restart it from where it stops.
+If needed, you can manually edit / remove those files to restart.
+
+
+You can also run:
+
+```sh
+bin/fscrawler
+```
+
+It will give you the list of existing jobs and will allow you to choose one.
+
+FS crawler will also store default mappings for elasticsearch in `~/.fscrawler/_default/_mappings`:
+
+* `1/doc.json`: for elasticsearch 1.x series document mapping
+* `1/folder.json`: for elasticsearch 1.x series folder mapping
+* `2/doc.json`: for elasticsearch 2.x series document mapping
+* `2/folder.json`: for elasticsearch 2.x series folder mapping
+* `5/doc.json`: for elasticsearch 5.x series document mapping
+* `5/folder.json`: for elasticsearch 5.x series folder mapping
+
+Read [Autogenerated mapping](#autogenerated-mapping) for more information.
+
+## Crawler options
+
+* `--help` displays help
+* `--silent` runs in silent mode. No output is generated.
+* `--debug` runs in debug mode.
+* `--trace` runs in trace mode (more verbose than debug).
+* `--config_dir` defines directory where jobs are stored instead of default `~/.fscrawler`.
+* `--username` defines the username to use when using an secured version of elasticsearch cluster. Read
+[Using Credentials](#using-credentials). (From 2.2)
+* `--upgrade_mapping` tries to upgrade existing mappings for documents and folders. Read
+[Upgrading an existing mapping](#upgrading-an-existing-mapping). (From 2.2)
+* `--loop x` defines the number of runs we want before exiting  (From 2.2):
+
+    * `X` where X is a negative value means infinite, like `-1` (default)
+    * `0` means that we don't run FSCrawler.
+    * `X` where X is a positive value is the number of runs before it stops.
+
+If you want to scan your hard drive only once, run with `--loop 1`.
+
+
+
+## Job file specification
+
+The job file must comply to the following `json` specifications:
+
+```json
 {
-  "type" : "fs"
-}
-```
-
-This will scan every 15 minutes all documents available in `/esdir` dir will index them into `mydocs` index using 
-`doc` type.
-
-Choose scanned directory
-------------------------
-
-We create the river with the following properties :
-
-* FS URL: `/tmp` or `c:\\tmp` if you use Microsoft Windows OS
-* Get only docs like `*.doc` and `*.pdf`
-* Don't index `resume*`
-
-
-```
-PUT _river/mydocs/_meta
-{
-  "type": "fs",
-  "fs": {
-	"url": "/tmp",
-	"includes": "*.doc,*.pdf",
-	"excludes": "resume"
+  "name" : "job_name",
+  "fs" : {
+    "url" : "/path/to/data/dir",
+    "update_rate" : "15m",
+    "includes": [
+      "*.*"
+    ],
+    "excludes": [
+      "*.json"
+    ],
+    "json_support" : false,
+    "xml_support" : false,
+    "attributes_support" : false,
+    "raw_metadata" : false,
+    "filename_as_id" : false,
+    "add_filesize" : true,
+    "remove_deleted" : true,
+    "store_source" : false,
+    "indexed_chars" : "10000"
+  },
+  "server" : {
+    "hostname" : null,
+    "port" : 22,
+    "username" : null,
+    "password" : null,
+    "protocol" : "local",
+    "pem_path" : null
+  },
+  "elasticsearch" : {
+    "nodes" : [ {
+      "host" : "127.0.0.1",
+      "port" : 9200
+    } ],
+    "index" : "docs",
+    "type" : "doc",
+    "bulk_size" : 100,
+    "flush_interval" : "5s",
+    "username" : "username",
+    "password" : "password"
   }
 }
 ```
 
-Setting update rate
--------------------
+## Settings list
+
+Here is a full list of existing settings:
+
+|               Name               | Default value |                                 Documentation                                     |
+|----------------------------------|---------------|-----------------------------------------------------------------------------------|
+| `name`                           |               | [the job name](#the-most-simple-crawler) (mandatory field)                        |
+| `fs.url`                         | `"/tmp/es"`   | [Root directory](#root-directory)                                                 |
+| `fs.update_rate`                 | `"15m"`       | [Update Rate](#update-rate)                                                       |
+| `fs.includes`                    | `null`        | [Includes and Excludes](#includes-and-excludes)                                   |
+| `fs.excludes`                    | `null`        | [Includes and Excludes](#includes-and-excludes)                                   |
+| `fs.json_support`                | `false`       | [Indexing JSon docs](#indexing-json-docs)                                         |
+| `fs.xml_support`                 | `false`       | [Indexing XML docs](#indexing-xml-docs) (from 2.2)                                |
+| `fs.attributes_support`          | `false`       | [Adding file attributes](#adding-file-attributes)                                 |
+| `fs.raw_metadata`                | `true`        | [Disabling raw metadata](#disabling-raw-metadata)                                 |
+| `fs.filename_as_id`              | `false`       | [Using Filename as `_id`](#using-filename-as-elasticsearch-_id)                   |
+| `fs.add_filesize`                | `true`        | [Disabling file size field](#disabling-file-size-field)                           |
+| `fs.remove_deleted`              | `true`        | [Ignore deleted files](#ignore-deleted-files)                                     |
+| `fs.store_source`                | `false`       | [Storing binary source document](#storing-binary-source-document-base64-encoded)  |
+| `fs.indexed_chars`               | `0.0`         | [Extracted characters](#extracted-characters)                                     |
+| `fs.checksum`                    | `null`        | [File signature](#file-signature)                                                 |
+| `server.hostname`                | `null`        | [Indexing using SSH](#indexing-using-ssh)                                         |
+| `server.port`                    | `22`          | [Indexing using SSH](#indexing-using-ssh)                                         |
+| `server.username`                | `null`        | [Indexing using SSH](#indexing-using-ssh)                                         |
+| `server.password`                | `null`        | [Indexing using SSH](#username--password)                                         |
+| `server.protocol`                | `"local"`     | [Indexing using SSH](#indexing-using-ssh)                                         |
+| `server.pem_path`                | `null`        | [Using Username / PEM file](#using-username--pem-file)                            |
+| `elasticsearch.index`            | job name      | [Index Name](#index-name)                                                         |
+| `elasticsearch.type`             | `"doc"`       | [Type Name](#type-name)                                                           |
+| `elasticsearch.bulk_size`        | `100`         | [Bulk settings](#bulk-settings)                                                   |
+| `elasticsearch.flush_interval`   | `"5s"`        | [Bulk settings](#bulk-settings)                                                   |
+| `elasticsearch.nodes`            |127.0.0.1:9200 | [Node settings](#node-settings)                                                   |
+| `elasticsearch.username`         | `null`        | [Credentials](#using-credentials) (from 2.2)                                      |
+| `elasticsearch.password`         | `null`        | [Credentials](#using-credentials) (from 2.2)                                      |
+
+
+### The most simple crawler
+
+You can define the most simple crawler job by writing a `~/.fscrawler/test/_settings.json` file as follow:
+
+```json
+{
+  "name" : "test"
+}
+```
+
+This will scan every 15 minutes all documents available in `/tmp/es` dir and will index them into `test` index with
+`doc` type. It will connect to an elasticsearch cluster running on `127.0.0.1`, port `9200`.
+
+**Note**: `name` is a mandatory field.
+
+### Root directory
+
+Define `fs.url` property in your `~/.fscrawler/test/_settings.json` file:
+
+```json
+{
+  "name" : "test",
+  "fs" : {
+    "url" : "/path/to/data/dir"
+  }
+}
+```
+
+For Windows users, use a form like `c:/tmp` or `c:\\tmp`.
+
+### Includes and excludes
+
+Let's say you want to index only docs like `*.doc` and `*.pdf` but `resume*`. So `resume_david.pdf` won't be indexed.
+
+Define `fs.includes` and `fs.excludes` properties in your `~/.fscrawler/test/_settings.json` file:
+
+```json
+{
+  "name" : "test",
+  "fs": {
+    "includes": [
+      "*.doc",
+      "*.pdf"
+    ],
+    "excludes": [
+      "resume*"
+    ]
+  }
+}
+```
+
+It also applies to directory names. So if you want to ignore `.ignore` dir, just add `.ignore` as an excluded name.
+Note that `includes` does not apply to directory names but only to filenames.
+
+
+### Update rate
 
 By default, `update_rate` is set to `15m`. You can modify this value using any compatible 
-[time unit](http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/common-options.html#time-units).
+[time unit](https://www.elastic.co/guide/en/elasticsearch/reference/current/common-options.html#time-units).
 
-For example, here is a 15 minutes update rate.
+For example, here is a 15 minutes update rate:
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
+  "name": "test",
   "fs": {
-	"update_rate": "15m"
+    "update_rate": "15m"
   }
 }
 ```
 
-Or a 3 hours update rate.
+Or a 3 hours update rate:
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
+  "name": "test",
   "fs": {
-	"update_rate": "3h"
+    "update_rate": "3h"
   }
 }
 ```
 
-Adding another local FS river
------------------------------
+`update_rate` is the pause duration between the last time we read the file system and another run.
+Which means that if you set it to `15m`, the next scan will happen on 15 minutes after the end of
+the current scan, whatever its duration.
 
-We add another river with the following properties :
 
-* FS URL: `/tmp2`
-* Update Rate: every hour
-* Get only docs like `*.doc`, `*.xls` and `*.pdf`
+### Indexing using SSH
 
-By the way, we define to index in the same index/type as the previous one
-(see [Bulk settings](#bulk-settings) for details):
+You can index files remotely using SSH.
 
-* index: `docs`
-* type: `doc`
+#### Username / Password
 
-```
-PUT _river/mynewriver/_meta
-{
-  "type": "fs",
-  "fs": {
-	"url": "/tmp2",
-	"update_rate": "1h",
-	"includes": [ "*.doc" , "*.xls", "*.pdf" ]
-  },
-  "index": {
-  	"index": "docs",
-  	"type": "doc",
-  	"bulk_size": 50
-  }
-}
-```
+Let's say you want to index from a remote server using SSH:
 
-Indexing using SSH
-------------------
-
-You can now index files remotely using SSH.
-
-### Username / Password
-
-* FS URL: `/tmp3`
+* FS URL: `/path/to/data/dir/on/server`
 * Server: `mynode.mydomain.com`
 * Username: `username`
 * Password: `password`
 * Protocol: `ssh` (default to `local`)
 * Port: `22` (default to `22`)
-* Update Rate: every hour 
-* Get only docs like `*.doc`, `*.xls` and `*.pdf`
 
-```
-PUT _river/mysshriver/_meta
+
+```json
 {
-  "type": "fs",
-  "fs": {
-	"url": "/tmp3",
-	"server": "mynode.mydomain.com",
-	"port": 22,
-	"username": "username",
-	"password": "password",
-	"protocol": "ssh",
-	"update_rate": "1h",
-	"includes": [ "*.doc" , "*.xls", "*.pdf" ]
+  "name" : "test",
+  "fs" : {
+    "url" : "/path/to/data/dir/on/server"
+  },
+  "server" : {
+    "hostname" : "mynode.mydomain.com",
+    "port" : 22,
+    "username" : "username",
+    "password" : "password",
+    "protocol" : "ssh"
   }
 }
 ```
 
-### Using Username / PEM file
+#### Using Username / PEM file
 
+Let's say you want to index from a remote server using SSH:
 
-* FS URL: `/tmp3`
+* FS URL: `/path/to/data/dir/on/server`
 * Server: `mynode.mydomain.com`
 * Username: `username`
 * PEM File: `/path/to/private_key.pem`
 * Protocol: `ssh` (default to `local`)
 * Port: `22` (default to `22`)
-* Update Rate: every hour
-* Get only docs like `*.doc`, `*.xls` and `*.pdf`
 
-```
-PUT _river/mysshriver/_meta
+```json
 {
-  "type": "fs",
-  "fs": {
-	"url": "/tmp3",
-	"server": "mynode.mydomain.com",
-	"port": 22,
-	"username": "username",
-	"pem_path": "/path/to/private_key.pem",
-	"protocol": "ssh",
-	"update_rate": "1h",
-	"includes": [ "*.doc" , "*.xls", "*.pdf" ]
+  "name" : "test",
+  "fs" : {
+    "url" : "/path/to/data/dir/on/server"
+  },
+  "server" : {
+    "hostname" : "mynode.mydomain.com",
+    "port" : 22,
+    "username" : "username",
+    "protocol" : "ssh",
+	"pem_path": "/path/to/private_key.pem"
   }
 }
 ```
 
-Searching for docs
-------------------
+### Indexing on HDFS
 
-This is a common use case in elasticsearch, we want to search for something ;-)
+There is no specific support for HDFS in FS crawler. But you can [mount your HDFS on your machine](https://wiki.apache.org/hadoop/MountableHDFS)
+and run FS crawler on this mount point. You can also read details about
+[HDFS NFS Gateway](http://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsNfsGateway.html).
 
-```
+
+# Searching for docs
+
+This is a common use case in elasticsearch, we want to search for something! ;-)
+
+```json
 GET docs/doc/_search
 {
   "query" : {
@@ -222,256 +382,443 @@ GET docs/doc/_search
 }
 ```
 
-Indexing JSon docs
-------------------
+# Indexing JSon docs
 
-If you want to index JSon files directly without parsing them through the attachment mapper plugin, you
-can set `json_support` to `true`.
+If you want to index JSon files directly without parsing with Tika, you can set `json_support` to `true`.
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
-  "fs": {
-	"url": "/tmp",
-	"update_rate": "1h",
-	"json_support" : true
+  "name" : "test",
+  "fs" : {
+    "json_support" : true
   }
 }
 ```
 
-Of course, if you did not define a mapping prior creating the river, Elasticsearch will auto guess the mapping.
+Of course, if you did not define a mapping before launching the crawler, Elasticsearch will auto guess the mapping.
 
-If you have more than one type, create as many rivers as types:
+# Indexing XML docs
 
-```
-PUT _river/mydocs1/_meta
+If you want to index XML files and convert them to JSON, you can set `xml_support` to `true`.
+
+```json
 {
-  "type": "fs",
+  "name" : "test",
+  "fs" : {
+    "xml_support" : true
+  }
+}
+```
+
+Of course, if you did not define a mapping before launching the crawler, Elasticsearch will auto guess the mapping.
+
+## Dealing with multiple types and multiple dirs
+
+If you have more than one type, create as many crawlers as types:
+
+`~/.fscrawler/test_type1/_settings.json`:
+
+```json
+{
+  "name": "test_type1",
   "fs": {
 	"url": "/tmp/type1",
-	"update_rate": "1h",
 	"json_support" : true
   },
-  "index": {
+  "elasticsearch": {
     "index": "mydocs",
     "type": "type1"
   }
 }
+```
 
-PUT _river/mydocs2/_meta
+`~/.fscrawler/test_type2/_settings.json`:
+
+```json
 {
-  "type": "fs",
+  "name": "test_type2",
   "fs": {
 	"url": "/tmp/type2",
-	"update_rate": "1h",
 	"json_support" : true
   },
-  "index": {
+  "elasticsearch": {
     "index": "mydocs",
     "type": "type2"
   }
 }
 ```
 
-You can also index many types from one single dir using two rivers on the same dir and by setting
+`~/.fscrawler/test_type3/_settings.json`:
+
+```json
+{
+  "name": "test_type3",
+  "fs": {
+	"url": "/tmp/type3",
+	"xml_support" : true
+  },
+  "elasticsearch": {
+    "index": "mydocs",
+    "type": "type3"
+  }
+}
+```
+
+## Dealing with multiple types within the same dir
+
+You can also index many types from one single dir using two crawlers scanning the same dir and by setting 
 `includes` parameter:
 
-```
-PUT _river/mydocs1/_meta
+`~/.fscrawler/test_type1.json`:
+
+```json
 {
-  "type": "fs",
+  "name": "test_type1",
   "fs": {
 	"url": "/tmp",
-	"update_rate": "1h",
     "includes": [ "type1*.json" ],
 	"json_support" : true
   },
-  "index": {
+  "elasticsearch": {
     "index": "mydocs",
     "type": "type1"
   }
 }
+```
 
-PUT _river/mydocs2/_meta
+`~/.fscrawler/test_type2.json`:
+
+```json
 {
-  "type": "fs",
+  "name": "test_type2",
   "fs": {
 	"url": "/tmp",
-	"update_rate": "1h",
     "includes": [ "type2*.json" ],
 	"json_support" : true
   },
-  "index": {
+  "elasticsearch": {
     "index": "mydocs",
     "type": "type2"
   }
 }
 ```
+
+`~/.fscrawler/test_type3.json`:
+
+```json
+{
+  "name": "test_type3",
+  "fs": {
+	"url": "/tmp",
+    "includes": [ "*.xml" ],
+	"xml_support" : true
+  },
+  "elasticsearch": {
+    "index": "mydocs",
+    "type": "type3"
+  }
+}
+```
+
+## Using filename as elasticsearch `_id`
 
 Please note that the document `_id` is always generated (hash value) from the JSon filename to avoid issues with
 special characters in filename.
 You can force to use the `_id` to be the filename using `filename_as_id` attribute:
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
-  "fs": {
-	"url": "/tmp",
-	"update_rate": "1h",
-	"json_support": true,
-	"filename_as_id": true
+  "name" : "test",
+  "fs" : {
+    "json_support" : true,
+    "filename_as_id" : true
   }
 }
 ```
 
-Disabling file size field
--------------------------
+This option can also be used with XML files when you set `xml_support` to `true`.
 
-By default, FSRiver will create a field to store the original file size in octet.
+# Adding file attributes
+
+If you want to add file attributes such as `attributes.owner` and `attributes.group`, you can set `attributes_support` to `true`.
+
+```json
+{
+  "name" : "test",
+  "fs" : {
+    "attributes_support" : true
+  }
+}
+```
+
+# Disabling raw metadata
+
+By default, FS Crawler will extract all found metadata within `meta.raw` object.
+If you want to disable this feature, you can set `raw_metadata` to `false`.
+
+```json
+{
+  "name" : "test",
+  "fs" : {
+    "raw_metadata" : false
+  }
+}
+```
+
+Generated raw metadata depends on the file format itself.
+
+For example, a PDF document could generate:
+
+* `"date" : "2016-07-07T08:37:42Z"`
+* `"pdf:PDFVersion" : "1.5"`
+* `"xmp:CreatorTool" : "Microsoft Word"`
+* `"Keywords" : "keyword1, keyword2"`
+* `"access_permission:modify_annotations" : "true"`
+* `"access_permission:can_print_degraded" : "true"`
+* `"subject" : "Test Tika Object"`
+* `"dc:creator" : "David Pilato"`
+* `"dcterms:created" : "2016-07-07T08:37:42Z"`
+* `"Last-Modified" : "2016-07-07T08:37:42Z"`
+* `"dcterms:modified" : "2016-07-07T08:37:42Z"`
+* `"dc:format" : "application/pdf; version=1.5"`
+* `"title" : "Test Tika title"`
+* `"Last-Save-Date" : "2016-07-07T08:37:42Z"`
+* `"access_permission:fill_in_form" : "true"`
+* `"meta:save-date" : "2016-07-07T08:37:42Z"`
+* `"pdf:encrypted" : "false"`
+* `"dc:title" : "Test Tika title"`
+* `"modified" : "2016-07-07T08:37:42Z"`
+* `"cp:subject" : "Test Tika Object"`
+* `"Content-Type" : "application/pdf"`
+* `"X-Parsed-By" : "org.apache.tika.parser.DefaultParser"`
+* `"creator" : "David Pilato"`
+* `"meta:author" : "David Pilato"`
+* `"dc:subject" : "keyword1, keyword2"`
+* `"meta:creation-date" : "2016-07-07T08:37:42Z"`
+* `"created" : "Thu Jul 07 10:37:42 CEST 2016"`
+* `"access_permission:extract_for_accessibility" : "true"`
+* `"access_permission:assemble_document" : "true"`
+* `"xmpTPg:NPages" : "2"`
+* `"Creation-Date" : "2016-07-07T08:37:42Z"`
+* `"access_permission:extract_content" : "true"`
+* `"access_permission:can_print" : "true"`
+* `"meta:keyword" : "keyword1, keyword2"`
+* `"Author" : "David Pilato"`
+* `"access_permission:can_modify" : "true"`
+
+Where a MP3 file would generate:
+
+* `"xmpDM:genre" : "Vocal"`
+* `"X-Parsed-By" : "org.apache.tika.parser.DefaultParser"`
+* `"creator" : "David Pilato"`
+* `"xmpDM:album" : "FS Crawler"`
+* `"xmpDM:trackNumber" : "1"`
+* `"xmpDM:releaseDate" : "2016"`
+* `"meta:author" : "David Pilato"`
+* `"xmpDM:artist" : "David Pilato"`
+* `"dc:creator" : "David Pilato"`
+* `"xmpDM:audioCompressor" : "MP3"`
+* `"title" : "Test Tika"`
+* `"xmpDM:audioChannelType" : "Stereo"`
+* `"version" : "MPEG 3 Layer III Version 1"`
+* `"xmpDM:logComment" : "Hello but reverted"`
+* `"xmpDM:audioSampleRate" : "44100"`
+* `"channels" : "2"`
+* `"dc:title" : "Test Tika"`
+* `"Author" : "David Pilato"`
+* `"xmpDM:duration" : "1018.775146484375"`
+* `"Content-Type" : "audio/mpeg"`
+* `"samplerate" : "44100"`
+
+As elasticsearch will by default to automatically guess the type, you could end up having conflicts between
+metadata raw fields: a field which is first detected as a date but is getting for another document a value like
+"in the seventies". In such a case, you could imagine forcing the mapping or defining an index mapping template.
+
+# Disabling file size field
+
+By default, FS crawler will create a field to store the original file size in octets.
 You can disable it using `add_filesize' option:
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
-  "fs": {
-	"url": "/tmp",
-	"add_filesize": false
+  "name" : "test",
+  "fs" : {
+    "add_filesize" : false
   }
 }
 ```
 
-Ignore deleted files
---------------------
+# Ignore deleted files
 
 If you don't want to remove indexed documents when you remove a file or a directory, you can
 set `remove_deleted` to `false` (default to `true`):
 
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
-  "fs": {
-	"url": "/tmp",
-	"remove_deleted": false
+  "name" : "test",
+  "fs" : {
+    "remove_deleted" : false
   }
 }
 ```
 
-Advanced
-========
+# Ignore content
 
-Suspend or restart a file river
--------------------------------
+If you don't want to extract file content but only index filesystem metadata such as filename, date, size and path,
+you can set `index_content` to `false` (default to `true`):
 
-If you need to stop a river, you can call the `_stop' endpoint:
 
-```
-GET _river/mydocs/_stop
-```
-
-To restart the river from the previous point, just call `_start` end point:
-
-```
-GET _river/mydocs/_start
-```
-
-Autogenerated mapping
----------------------
-
-When the FSRiver detect a new type, it creates automatically a mapping for this type.
-
-```javascript
+```json
 {
-  "doc" : {
-    "properties" : {
-      "content" : {
-        "type" : "string",
-        "store" : "yes"
-      },
-      "meta" : {
-        "properties" : {
-          "author" : {
-              "type" : "string",
-              "store" : "yes"
-          },
-          "title" : {
-              "type" : "string",
-              "store" : "yes"
-          },
-          "date" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "keywords" : {
-              "type" : "string",
-              "store" : "yes"
-          }
+  "name" : "test",
+  "fs" : {
+    "index_content" : false
+  }
+}
+```
+
+# Advanced
+
+## JVM Settings
+
+If you want to provide JVM settings, like defining memory allocated to FS Crawler, you can define
+a system property named `FS_JAVA_OPTS`:
+
+```sh
+FS_JAVA_OPTS="-Xmx521m -Xms521m" bin/fscrawler
+```
+
+## Autogenerated mapping
+
+When the FS crawler detects a new type, it creates automatically a mapping for this type.
+The default mapping is read from `~/.fscrawler/_default/2/doc.json` which you can read from [the source](src/main/resources/fr/pilato/elasticsearch/crawler/fs/_default/2/doc.json). 
+
+You can also display the index mapping being used with Kibana
+
+```GET docs/doc/_mapping```
+
+or fall back to the command line
+
+```curl 'http://localhost:9200/docs/_mapping?pretty'```
+
+## Creating your own mapping (analyzers)
+
+If you want to define your own mapping to set analyzers for example, you can either push the mapping or define a 
+`~/.fscrawler/_default/5/doc.json` document which contains the mapping you wish **before starting the FS crawler**.
+
+The following example uses a `french` analyzer to index the `content` field.
+
+```json
+{
+  "_source" : {
+    "excludes" : [
+      "attachment"
+    ]
+  },
+  "properties" : {
+    "attachment" : {
+      "type" : "binary",
+      "store" : true
+    },
+    "attributes" : {
+      "properties" : {
+        "group" : {
+          "type" : "keyword",
+          "store" : true
+        },
+        "owner" : {
+          "type" : "keyword",
+          "store" : true
         }
-      },
-      "file" : {
-        "properties" : {
-          "content_type" : {
-              "type" : "string",
-              "analyzer" : "not_analyzed",
-              "store" : "yes"
-          },
-          "last_modified" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "indexing_date" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "filesize" : {
-              "type" : "long",
-              "store" : "yes"
-          },
-          "indexed_chars" : {
-              "type" : "long",
-              "store" : "yes"
-          },
-          "filename" : {
-              "type" : "string",
-              "analyzer" : "not_analyzed",
-              "store" : "yes"
-          },
-          "url" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "no"
-          }
+      }
+    },
+    "content" : {
+      "type" : "text",
+      "analyzer" : "french",
+      "store" : true
+    },
+    "file" : {
+      "properties" : {
+        "content_type" : {
+          "type" : "keyword",
+          "store" : true
+        },
+        "filename" : {
+          "type" : "keyword",
+          "store" : true
+        },
+        "extension" : {
+          "type" : "keyword",
+          "store" : true
+        },
+        "filesize" : {
+          "type" : "long",
+          "store" : true
+        },
+        "indexed_chars" : {
+          "type" : "long",
+          "store" : true
+        },
+        "indexing_date" : {
+          "type" : "date",
+          "store" : true,
+          "format" : "dateOptionalTime"
+        },
+        "last_modified" : {
+          "type" : "date",
+          "store" : true,
+          "format" : "dateOptionalTime"
+        },
+        "checksum": {
+          "type": "keyword",
+          "store": true
+        },
+        "url" : {
+          "type" : "keyword",
+          "index" : false,
+          "store" : true
         }
-      },
-      "path" : {
-        "properties" : {
-          "encoded" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "virtual" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "root" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "real" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          }
+      }
+    },
+    "meta" : {
+      "properties" : {
+        "author" : {
+          "type" : "text",
+          "store" : true
+        },
+        "date" : {
+          "type" : "date",
+          "store" : true,
+          "format" : "dateOptionalTime"
+        },
+        "keywords" : {
+          "type" : "text",
+          "store" : true
+        },
+        "title" : {
+          "type" : "text",
+          "store" : true
+        }
+      }
+    },
+    "path" : {
+      "properties" : {
+        "encoded" : {
+          "type" : "keyword",
+          "store" : true
+        },
+        "real" : {
+          "type" : "keyword",
+          "store" : true
+        },
+        "root" : {
+          "type" : "keyword",
+          "store" : true
+        },
+        "virtual" : {
+          "type" : "keyword",
+          "store" : true
         }
       }
     }
@@ -479,10 +826,7 @@ When the FSRiver detect a new type, it creates automatically a mapping for this 
 }
 ```
 
-Creating your own mapping (analyzers)
--------------------------------------
-
-If you want to define your own mapping to set analyzers for example, you can push the mapping **before** starting the FS River.
+Note that if you want to push manually the mapping to elasticsearch you can use the classic REST calls:
 
 ```
 # Create index
@@ -491,143 +835,110 @@ PUT docs
 # Create the mapping
 PUT docs/doc/_mapping
 {
-  "doc" : {
-    "properties" : {
-      "content" : {
-        "type" : "string",
-        "store" : "yes",
-        "analyzer" : "french"
-      },
-      "meta" : {
-        "properties" : {
-          "author" : {
-              "type" : "string",
-              "store" : "yes"
-          },
-          "title" : {
-              "type" : "string",
-              "store" : "yes"
-          },
-          "date" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "keywords" : {
-              "type" : "string",
-              "store" : "yes"
-          }
-        }
-      },
-      "file" : {
-        "properties" : {
-          "content_type" : {
-              "type" : "string",
-              "analyzer" : "not_analyzed",
-              "store" : "yes"
-          },
-          "last_modified" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "indexing_date" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "filesize" : {
-              "type" : "long",
-              "store" : "yes"
-          },
-          "indexed_chars" : {
-              "type" : "long",
-              "store" : "yes"
-          },
-          "filename" : {
-              "type" : "string",
-              "analyzer" : "not_analyzed",
-              "store" : "yes"
-          },
-          "url" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "no"
-          }
-        }
-      },
-      "path" : {
-        "properties" : {
-          "encoded" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "virtual" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "root" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "real" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          }
-        }
-      }
-    }
-  }
+  // Same mapping as previously seen
 }
 ```
 
-Generated fields
-----------------
+## Define an explicit mapping per job
 
-FS River creates the following fields :
+Let's say you created a job named `job_name` and you are sending documents against an elasticsearch cluster
+running version `5.x`.
 
-|   Field (>= 0.4.0)   |   Field (< 0.4.0)    |                Description                  |                    Example                  |
-|----------------------|----------------------|---------------------------------------------|---------------------------------------------|
-| `content`            | `file.file`          | Extracted content                           | `"This is my text!"`                        |
-| `attachment`         | `file`               | BASE64 encoded binary file                  | BASE64 Encoded document                     |
-| `meta.author`        | `file.author`        | Author if any in document metadata          | `"David Pilato"`                            |
-| `meta.title`         | `file.title`         | Title if any in document metadata           | `"My document title"`                       |
-| `meta.date`          |                      | Document date if any in document metadata   | `"2013-04-04T15:21:35"`                     |
-| `meta.keywords`      |                      | Keywords if any in document metadata        | `["river","fs","elasticsearch"]`            |
-| `file.content_type`  | `file.content_type`  | Content Type                                | `"application/vnd.oasis.opendocument.text"` |
-| `file.last_modified` |                      | Last modification date                      | `1386855978000`                             |
-| `file.indexing_date` | `postDate`           | Indexing date                               | `"2013-12-12T13:50:58.758Z"`                |
-| `file.filesize`      | `filesize`           | File size in bytes                          | `1256362`                                   |
-| `file.indexed_chars` | `file.indexed_chars` | Extracted chars if `fs.indexed_chars` > 0   | `100000`                                    |
-| `file.filename`      | `name`               | Original file name                          | `"mydocument.pdf"`                          |
-| `file.url`           |                      | Original file url                           | `"file://tmp/mydir/otherdir/mydocument.pdf"`|
-| `path.encoded`       | `pathEncoded`        | BASE64 encoded file path (for internal use) | `"112aed83738239dbfe4485f024cd4ce1"`        |
-| `path.virtual`       | `virtualpath`        | Relative path from root path                | `"mydir/otherdir"`                          |
-| `path.root`          | `rootpath`           | BASE64 encoded root path (for internal use) | `"112aed83738239dbfe4485f024cd4ce1"`        |
-| `path.real`          |                      | Actual real path name                       | `"/tmp/mydir/otherdir/mydocument.pdf"`      |
+If you create the following files, they will be picked up at job start time instead of the
+[default ones](#autogenerated-mapping):
 
-Here is a typical JSON document generated by the river:
+* `~/.fscrawler/{job_name}/_mappings/5/doc.json`
+* `~/.fscrawler/{job_name}/_mappings/5/folder.json`
 
-```javascript
+You can do the same for other elasticsearch versions with:
+
+* `~/.fscrawler/{job_name}/_mappings/1/doc.json` for 1.x series
+* `~/.fscrawler/{job_name}/_mappings/1/folder.json` for 1.x series
+* `~/.fscrawler/{job_name}/_mappings/2/doc.json` for 2.x series
+* `~/.fscrawler/{job_name}/_mappings/2/folder.json` for 2.x series
+
+
+## Replace existing mapping
+
+Unfortunately you can not change the mapping on existing data.
+Therefore, you'll need first to remove existing index, which means remove all existing data, and then restart FS crawler
+with the new mapping.
+
+You might to try [elasticsearch Reindex API](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html) though.
+
+## Upgrading an existing mapping
+
+It could happen that you would like to add new sub fields or are upgrading from a previous version of FS crawler
+which requires that you upgrade the mapping before sending the first documents.
+
+The `--upgrade_mapping` option will help you.
+
+The following command will upgrade the mappings related to the `job_name` job and then will run normally:
+
+```sh
+bin/fscrawler job_name --upgrade_mapping
+```
+
+If you just want to upgrade the mapping without launching the job itself, you can use the [loop](#crawler-options) option:
+
+```sh
+bin/fscrawler job_name --upgrade_mapping --loop 0
+```
+
+
+## Generated fields
+
+FS crawler creates the following fields :
+
+|         Field        |                Description                  |                    Example                  |
+|----------------------|---------------------------------------------|---------------------------------------------|
+| `content`            | Extracted content                           | `"This is my text!"`                        |
+| `attachment`         | BASE64 encoded binary file                  | BASE64 Encoded document                     |
+| `meta.author`        | Author if any in document metadata          | `"David Pilato"`                            |
+| `meta.title`         | Title if any in document metadata           | `"My document title"`                       |
+| `meta.date`          | Document date if any in document metadata   | `"2013-04-04T15:21:35"`                     |
+| `meta.keywords`      | Keywords if any in document metadata        | `["river","fs","elasticsearch"]`            |
+| `file.content_type`  | Content Type                                | `"application/vnd.oasis.opendocument.text"` |
+| `file.last_modified` | Last modification date                      | `1386855978000`                             |
+| `file.indexing_date` | Indexing date                               | `"2013-12-12T13:50:58.758Z"`                |
+| `file.filesize`      | File size in bytes                          | `1256362`                                   |
+| `file.indexed_chars` | Extracted chars if `fs.indexed_chars` > 0   | `100000`                                    |
+| `file.filename`      | Original file name                          | `"mydocument.pdf"`                          |
+| `file.extension`     | Original file name extension (from 2.2)     | `"pdf"`                                     |
+| `file.url`           | Original file url                           | `"file://tmp/mydir/otherdir/mydocument.pdf"`|
+| `file.checksum`      | Checksum if `fs.checksum` set               | `"c32eafae2587bef4b3b32f73743c3c61"`        |
+| `path.encoded`       | MD5 encoded file path (for internal use)    | `"112aed83738239dbfe4485f024cd4ce1"`        |
+| `path.virtual`       | Relative path from root path                | `"mydir/otherdir"`                          |
+| `path.root`          | MD5 encoded root path (for internal use)    | `"112aed83738239dbfe4485f024cd4ce1"`        |
+| `path.real`          | Actual real path name                       | `"/tmp/mydir/otherdir/mydocument.pdf"`      |
+| `attributes.owner`   | Owner name                                  | `"david"`                                   |
+| `attributes.group`   | Group name                                  | `"staff"`                                   |
+
+
+Here is a typical JSON document generated by the crawler:
+
+```json
 {
    "file":{
       "filename":"test.odt",
+      "extension":"odt",
       "last_modified":1386855978000,
       "indexing_date":"2013-12-12T13:50:58.758Z",
       "content_type":"application/vnd.oasis.opendocument.text",
       "url":"file:///tmp/testfs_metadata/test.odt",
       "indexed_chars":100000,
-      "filesize":8355
+      "filesize":8355,
+      "checksum":"c32eafae2587bef4b3b32f73743c3c61"
    },
    "path":{
       "encoded":"bceb3913f6d793e915beb70a4735592",
       "root":"bceb3913f6d793e915beb70a4735592",
       "virtual":"",
       "real":"/tmp/testfs_metadata/test.odt"
+   },
+   "attributes": {
+      "owner": "david",
+      "group": "staff"
    },
    "meta":{
       "author":"David Pilato",
@@ -636,16 +947,29 @@ Here is a typical JSON document generated by the river:
       "keywords":[
          "fs",
          "elasticsearch",
-         "river"
+         "crawler"
       ]
    },
    "content":"Bonjour David\n\n\n"
 }
 ```
 
+## Simple Search
 
-Advanced search
----------------
+You can use the content field to perform full-text search on
+
+```
+GET docs/doc/_search
+{
+  "query" : {
+    "match" : {
+        "content" : "the quick brown fox"
+    }
+  }
+}
+```
+
+## Advanced search
 
 You can use meta fields to perform search on.
 
@@ -660,130 +984,35 @@ GET docs/doc/_search
 }
 ```
 
-Disabling _source
------------------
+Or run some aggregations on top of them, like:
 
-If you don't need to highlight your search responses nor need to get back the original file from
-Elasticsearch, you can think about disabling `_source` field.
-
-In that case, you need to store `file.filename` field. Otherwise, FSRiver won't be able to remove documents when
-they disappear from your hard drive.
-
-```javascript
+GET docs/doc/_search
 {
-  "doc" : {
-    "_source" : { "enabled" : false },
-    "properties" : {
-      "content" : {
-        "type" : "string",
-        "store" : "yes"
-      },
-      "meta" : {
-        "properties" : {
-          "author" : {
-              "type" : "string",
-              "store" : "yes"
-          },
-          "title" : {
-              "type" : "string",
-              "store" : "yes"
-          },
-          "date" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "keywords" : {
-              "type" : "string",
-              "store" : "yes"
-          }
-        }
-      },
-      "file" : {
-        "properties" : {
-          "content_type" : {
-              "type" : "string",
-              "analyzer" : "not_analyzed",
-              "store" : "yes"
-          },
-          "last_modified" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "indexing_date" : {
-              "type" : "date",
-              "format" : "dateOptionalTime",
-              "store" : "yes"
-          },
-          "filesize" : {
-              "type" : "long",
-              "store" : "yes"
-          },
-          "indexed_chars" : {
-              "type" : "long",
-              "store" : "yes"
-          },
-          "filename" : {
-              "type" : "string",
-              "analyzer" : "not_analyzed",
-              "store" : "yes"
-          },
-          "url" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "no"
-          }
-        }
-      },
-      "path" : {
-        "properties" : {
-          "encoded" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "virtual" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "root" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          },
-          "real" : {
-              "type" : "string",
-              "store" : "yes",
-              "index" : "not_analyzed"
-          }
-        }
+  "size": 0,
+  "aggs": {
+    "by_extension": {
+      "terms": {
+        "field": "file.extension"
       }
     }
   }
 }
-```
 
-Storing binary source document (BASE64 encoded)
------------------------------------------------
+## Storing binary source document (BASE64 encoded)
 
 You can store in elasticsearch itself the binary document using `store_source` option:
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
-  "fs": {
-	"url": "/tmp",
-	"update_rate": "1h",
-	"store_source": true
+  "name" : "test",
+  "fs" : {
+    "store_source" : true
   }
 }
 ```
 
 In that case, a new stored field named `attachment` is added to the generated JSon document.
-If you let FSRiver generates the mapping, FSRiver will exclude `attachment` field from
+If you let FS crawler generates the mapping, FS crawler will exclude `attachment` field from
 `_source` to save some disk space.
 
 That means you need to ask for field `attachment` when querying:
@@ -800,7 +1029,7 @@ GET mydocs/doc/_search
 
 Default generated mapping in this case is:
 
-```javascript
+```json
 {
   "doc" : {
     "_source" : {
@@ -809,8 +1038,8 @@ Default generated mapping in this case is:
     "properties" : {
       "attachment" : {
         "type" : "binary"
-      },
-      ... // Other properties here
+      }
+      // ... Other properties here
     }
   }
 }
@@ -830,133 +1059,338 @@ PUT docs/doc/_mapping
       "attachment" : {
         "type" : "binary",
         "store" : "no"
-      },
-      ... // Other properties here
+      }
+      // ... Other properties here
     }
   }
 }
 ```
 
-Extracted characters
---------------------
+## Extracted characters
 
-By default FSRiver will extract only a limited size of characters (100000).
-But, you can set `indexed_chars` to `1` in FSRiver definition.
+By default FS crawler will extract only the first 100 000 characters.
+But, you can set `indexed_chars` to `5000` in FS crawler settings in order to overwrite this default settings.
 
-```
-PUT _river/mydocs/_meta
+```json
 {
-  "type": "fs",
+  "name": "test",
   "fs": {
-    "url": "/tmp",
-    "indexed_chars": 1
+    "indexed_chars": "5000"
   }
 }
 ```
 
-That option will add a special field `_indexed_chars` to the document. It will be set to the filesize.
-This field is used by mapper attachment plugin to define the number of extracted characters.
+This number can be either a fixed size, number of characters that is, or a percent using `%` sign.
+The percentage value will be applied to the filesize to determine the number of character the crawler needs
+to extract.
 
-Setting `indexed_chars : x` will compute file size, multiply it with x and pass it to Tika using `_indexed_chars` field.
+If you want to index only `80%` of filesize, define `indexed_chars` to `"80%"`.
+Of course, if you want to index the full document, you can set this property to `"100%"`. Double values are also
+supported so `"0.01%"` is also a correct value.
 
-That means that a value of 0.8 will extract 20% less characters than the file size. A value of 1.5 will extract 50% more
-characters than the filesize (think compressed files). A value of 1, will extract exactly the filesize.
+**Compressed files**: If your file is compressed, you might need to increase `indexed_chars` to more than `"100%"`. 
+For example, `"150%"`.
 
-Note that Tika requires to allocate in memory a data structure to extract text. Setting `indexed_chars` to a high
+If you want to extract the full content, define `indexed_chars` to `"-1"`.
+
+**Note**: Tika requires to allocate in memory a data structure to extract text. Setting `indexed_chars` to a high
 number will require more memory!
 
-Bulk settings
-=============
+## File checksum
 
-You can change some indexing settings:
+If you want FS crawler to generate a checksum for each file, set `checksum` to the algorithm you wish to use
+to compute the checksum, such as `MD5` or `SHA-1`.
 
-* `index.index` sets the index name where your documents will be indexed (default to river name)
-* `index.type` sets the type name for your documents (default to `doc`)
-* `index.bulk_size` set the maximum number of documents per bulk before a bulk is sent to elasticsearch (default to `100`)
-* `index.flush_interval` set the bulk flush interval frequency (default to `5s`). It will be use to process bulk even if
-bulk is not fill with `bulk_size` documents.
-
-For example:
-
-```
-PUT _river/myriver/_meta
+```json
 {
-  "type": "fs",
+  "name": "test",
   "fs": {
-	"url": "/sales"
-  },
-  "index": {
-  	"index": "acme",
-  	"type": "sales",
-  	"bulk_size": 10,
-  	"flush_interval": "30s"
+    "checksum": "MD5"
+  }
+}
+```
+
+# Elasticsearch settings
+
+You can change elasticsearch settings within `elasticsearch` settings object.
+
+## Index name
+
+By default, FS crawler will index your data in an index which name is the same as the crawler name (`name` property).
+You can change it by setting `index` field:
+
+```json
+{
+  "name" : "test",
+  "elasticsearch" : {
+    "index" : "docs"
+  }
+}
+```
+
+## Type name
+
+By default, FS crawler will index your data using `doc` as the type name.
+You can change it by setting `type` field:
+
+```json
+{
+  "name" : "test",
+  "elasticsearch" : {
+    "type" : "mydocument"
+  }
+}
+```
+
+## Bulk settings
+
+FS crawler is using bulks to send data to elasticsearch. By default the bulk is executed every 100 operations or 
+every 5 seconds. You can change default settings using `bulk_size` and `flush_interval`:
+
+```json
+{
+  "name" : "test",
+  "elasticsearch" : {
+    "bulk_size" : 1000,
+    "flush_interval" : "2s"
+  }
+}
+```
+
+## Node settings
+
+FS crawler is using elasticsearch REST layer to send data to your running cluster.
+By default, it connects to `127.0.0.1` on port `9200` which are the default settings when
+running a local node on your machine.
+
+Of course, in production, you would probably change this and connect to a production cluster:
+
+```json
+{
+  "name" : "test",
+  "elasticsearch" : {
+    "nodes" : [
+      { "host" : "mynode1.mycompany.com", "port" : 9200 }
+    ]
+  }
+}
+```
+
+You can define multiple nodes:
+
+```json
+{
+  "name" : "test",
+  "elasticsearch" : {
+    "nodes" : [
+      { "host" : "mynode1.mycompany.com", "port" : 9200 },
+      { "host" : "mynode2.mycompany.com", "port" : 9200 },
+      { "host" : "mynode3.mycompany.com", "port" : 9200 }
+    ]
   }
 }
 ```
 
 
-Migrating from version < 0.4.0
-==============================
+## Using Credentials
 
-Some important changes have been done in FSRiver 0.4.0:
+If you secured your elasticsearch cluster with [X-Pack](https://www.elastic.co/downloads/x-pack), you can provide
+`username` and `password` to FS crawler:
 
-* You don't have to add attachment plugin anymore as we directly rely on Apache Tika.
-* Fields have changed. You should look at [Generated Fields](#generated-fields) section
-to know how the old fields have been renamed.
+```json
+{
+  "name" : "test",
+  "elasticsearch" : {
+    "username" : "elastic",
+    "password" : "changeme"
+  }
+}
+```
 
+**WARNING**: note that for the current version, the elasticsearch password is stored in plain text in
+your job setting file.
 
-Settings list
-=============
+A better practice is to only set the username or pass it with `--username elastic` option when starting
+FS Crawler.
 
-Here is a full list of existing settings:
+If the password is not defined, you will be prompted when starting the job:
 
-|               Name               |                                  Documentation                                    |
-|----------------------------------|-----------------------------------------------------------------------------------|
-| `fs.url`                         | [Creating a Local FS river](#creating-a-local-fs-river)                           |
-| `fs.update_rate`                 | [Creating a Local FS river](#creating-a-local-fs-river)                           |
-| `fs.includes`                    | [Creating a Local FS river](#creating-a-local-fs-river)                           |
-| `fs.excludes`                    | [Creating a Local FS river](#creating-a-local-fs-river)                           |
-| `fs.server`                      | [Indexing using SSH](#indexing-using-ssh)                                         |
-| `fs.port`                        | [Indexing using SSH](#indexing-using-ssh)                                         |
-| `fs.username`                    | [Indexing using SSH](#indexing-using-ssh)                                         |
-| `fs.password`                    | [Indexing using SSH](#indexing-using-ssh)                                         |
-| `fs.protocol`                    | [Indexing using SSH](#indexing-using-ssh)                                         |
-| `fs.pem_path`                    | [Indexing using SSH](#indexing-using-ssh)                                         |
-| `fs.json_support`                | [Indexing JSon docs](#indexing-json-docs)                                         |
-| `fs.filename_as_id`              | [Indexing JSon docs](#indexing-json-docs)                                         |
-| `fs.add_filesize`                | [Disabling file size field](#disabling-file-size-field)                           |
-| `fs.remove_deleted`              | [Ignore deleted files](#ignore-deleted-files)                                     |
-| `fs.indexed_chars`               | [Extracted characters](#extracted-characters)                                     |
-| `fs.store_source`                | [Storing binary source document](#storing-binary-source-document-base64-encoded)  |
-| `index.index`                    | [Bulk settings](#bulk-settings)                                                   |
-| `index.type`                     | [Bulk settings](#bulk-settings)                                                   |
-| `index.bulk_size`                | [Bulk settings](#bulk-settings)                                                   |
-| `index.flush_interval`           | [Bulk settings](#bulk-settings)                                                   |
+```
+22:46:42,528 INFO  [f.p.e.c.f.FsCrawler] Password for elastic:
+```
 
+# OCR integration (using Tika and Tesseract)
 
-Debug mode
-==========
+To deal with images containing text, just [install Tesseract](https://github.com/tesseract-ocr/tesseract/wiki). Tesseract will be auto-detected by Tika.
+Then add an image (png, jpg, ...) into your Fscrawler [root directory](#root-directory). After the next index update, the text will be indexed and placed in "_source.content".
 
-To activate traces (`DEBUG` or `TRACE` level), you need to modify `config/logging.yml` and set 
-`fr.pilato.elasticsearch.river.fs` to the desired log level:
+# Developing on FS Crawler project
 
+If you are thinking of contributing on the project, which is highly appreciated, here are
+some tricks which might help.
 
-```yaml
-es.logger.level: INFO
-rootLogger: ${es.logger.level}, console, file
-logger:
-  # TRACE fsriver
-  fr.pilato.elasticsearch.river.fs: TRACE
+## Building
+
+The project is built using [Apache Maven](https://maven.apache.org/).
+It needs Java >= 1.8.
+
+To build it, just run:
+
+```sh
+git clone https://github.com/dadoonet/fscrawler.git
+cd fscrawler
+mvn clean install
+```
+
+You can also skip running tests with:
+
+```sh
+mvn clean install -DskipTests
+```
+
+## Testing
+
+Tests are now separated between unit tests and integration tests:
+
+* Unit tests are defined in [fr.pilato.elasticsearch.crawler.fs.test.unit](src/test/java/fr/pilato/elasticsearch/crawler/fs/test/unit)
+package.
+* Integration tests are defined in [fr.pilato.elasticsearch.crawler.fs.test.integration](src/test/java/fr/pilato/elasticsearch/crawler/fs/test/integration)
+package.
+
+### Integration tests
+
+Integration tests only run when an elasticsearch cluster is running at [127.0.0.1:9400](http://127.0.0.1:9400).
+When running with maven, an elasticsearch instance is automatically downloaded from maven central, installed
+and launched before integration tests start and stopped after integration tests.
+
+This local test instance is installed under `target/integration-tests/run`.
+If you have any trouble, you can stop any running instance, then run `mvn clean` to clean all left data.
+
+Note that a PID file is generated in `target/integration-tests/run/es.pid`.
+
+For debugging purpose, you can still run integration tests from your IDE.
+Just download any version of elasticsearch you wish, and launch it with:
+
+```sh
+# elasticsearch 1.x
+bin/elasticsearch -Des.http.port=9400 -Des.network.host=127.0.0.1
+# elasticsearch 2.x
+bin/elasticsearch -Des.http.port=9400
+# elasticsearch 5.x
+bin/elasticsearch -Ehttp.port=9400
+```
+
+Integration tests will detect the running instance and will not ignore anymore those tests.
+
+You can also tell maven to run integration tests by deploying another version of elasticsearch:
+
+```sh
+# For elasticsearch 1.x series
+mvn install -Pes-1x
+mvn install -Pes-2x
+```
+
+By default, it will run integration tests against elasticsearch 5.x series cluster.
+
+### Randomized testing
+
+FS Crawler uses [Randomized testing framework](https://github.com/randomizedtesting/randomizedtesting).
+In case of failure, it will print a line like:
+
+```
+REPRODUCE WITH:
+mvn test -Dtests.seed=AC6992149EB4B547 -Dtests.class=fr.pilato.elasticsearch.crawler.fs.test.unit.tika.TikaDocParserTest -Dtests.method="testExtractFromRtf" -Dtests.locale=ga-IE -Dtests.timezone=Canada/Saskatchewan
 ```
 
 
-License
-=======
+It also exposes some parameters you can use at build time:
+
+* `tests.output`: display test output. For example:
+
+```sh
+mvn install -Dtests.output=always
+mvn install -Dtests.output=onError
+```
+
+* `tests.locale`: run the tests using a given Locale. For example:
+
+```sh
+mvn install -Dtests.locale=random
+mvn install -Dtests.locale=fr-FR
+```
+
+* `tests.timezone`: run the tests using a given Timezone. For example:
+
+```sh
+mvn install -Dtests.timezone=random
+mvn install -Dtests.timezone=CEST
+mvn install -Dtests.timezone=-0200
+```
+
+* `tests.verbose`: adds running tests details while executing tests
+
+```sh
+mvn install -Dtests.verbose
+```
+
+* `tests.parallelism`: number of JVMs to start to run tests
+
+```sh
+mvn install -Dtests.parallelism=auto
+mvn install -Dtests.parallelism=max
+mvn install -Dtests.parallelism=1
+```
+
+* `tests.seed`: specify the seed to use to run the test suite if you need to reproduce a failure
+given a specific test context.
+
+```sh
+mvn test -Dtests.seed=E776CE45185A6E7A
+```
+
+* `tests.leaveTemporary`: leave temporary files on disk
+
+```sh
+mvn test -Dtests.leaveTemporary
+```
+
+
+## Releasing
+
+To release a version, just run:
+
+```sh
+./release.sh
+```
+
+The release script will:
+
+* Create a release branch
+* Replace SNAPSHOT version by the final version number
+* Commit the change
+* Run tests against elasticsearch 1.x series
+* Run tests against elasticsearch 2.x series
+* Run tests against elasticsearch 5.x series
+* Build the final artifacts using release profile (signing artifacts and generating all needed files)
+* Tag the version
+* Prepare the announcement email
+* Deploy to https://oss.sonatype.org/
+* Prepare the next SNAPSHOT version
+* Commit the change
+* Release the Sonatype staging repository
+* Merge the release branch to the branch we started from
+* Push the changes to origin
+* Announce the version on https://discuss.elastic.co/c/annoucements/community-ecosystem
+
+You will be guided through all the steps.
+
+
+# License
 
 ```
 This software is licensed under the Apache 2 license, quoted below.
 
-Copyright 2011-2014 David Pilato
+Copyright 2011-2016 David Pilato
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not
 use this file except in compliance with the License. You may obtain a copy of
